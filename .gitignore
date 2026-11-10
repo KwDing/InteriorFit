@@ -1,0 +1,36 @@
+# Only plugin distribution files belong at the repository root.
+/*
+!/.gitignore
+!/README.md
+!/InteriorFit.uplugin
+!/Source/
+!/Content/
+!/Config/
+!/Resources/
+
+# Generated Unreal, IDE and Python output.
+Binaries/
+Intermediate/
+Saved/
+DerivedDataCache/
+.vs/
+.idea/
+__pycache__/
+*.py[cod]
+*.sln
+*.suo
+*.VC.db
+*.pdb
+
+# Host projects, private evidence, archives and credentials.
+*.uproject
+*.umap
+Tests/
+Demo/
+Docs/
+*.zip
+*.log
+.env
+.env.*
+*.pem
+*.key

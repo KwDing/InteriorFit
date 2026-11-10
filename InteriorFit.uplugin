@@ -1,0 +1,34 @@
+{
+  "FileVersion": 3,
+  "Version": 4,
+  "VersionName": "0.4.0",
+  "FriendlyName": "Interior Fit",
+  "Description": "Interior and opening authoring, plus geometry-only surface splines and runtime area shapes.",
+  "Category": "Level Editing",
+  "CanContainContent": true,
+  "EnabledByDefault": false,
+  "Modules": [
+    {
+      "Name": "InteriorFitRuntime",
+      "Type": "Runtime",
+      "LoadingPhase": "Default"
+    },
+    {
+      "Name": "InteriorFitEditor",
+      "Type": "Editor",
+      "LoadingPhase": "PostEngineInit"
+    }
+  ],
+  "Plugins": [
+    {"Name": "GeometryScripting", "Enabled": true, "TargetAllowList": ["Editor"]},
+    {
+      "Name": "PythonScriptPlugin",
+      "Enabled": true,
+      "TargetAllowList": [
+        "Editor"
+      ]
+    }
+  ]
+}
+
+

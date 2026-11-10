@@ -1,0 +1,8 @@
+{
+  "enabled": true,
+  "micro_volume_m3": 30,
+  "large_volume_m3": 300,
+  "long_diagonal_m": 35,
+  "max_volume_change": 0.12,
+  "boundary_fraction": 0.06
+}

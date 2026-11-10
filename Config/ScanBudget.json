@@ -1,0 +1,11 @@
+{
+  "enabled": true,
+  "max_rays": 384,
+  "scan_time_ms": 450,
+  "acceptance_total_ms": 500,
+  "acceptance_process_cpu_percent": 15,
+  "cpu_sample_ms": 100,
+  "profiles": {
+    "stairwell": { "max_rays": 1024 }
+  }
+}

@@ -1,0 +1,9 @@
+{
+  "preview_iou_min": 0.85,
+  "target_iou": 0.90,
+  "overall_success_min": 0.90,
+  "class_success_min": 0.80,
+  "max_rays": 384,
+  "total_time_ms_exclusive": 500,
+  "process_cpu_percent_max": 15
+}

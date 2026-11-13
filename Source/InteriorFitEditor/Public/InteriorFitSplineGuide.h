@@ -11,9 +11,12 @@ UCLASS()
 class INTERIORFITEDITOR_API AInteriorFitSplineGuide : public AActor
 {
     GENERATED_BODY()
-public:
+  public:
     AInteriorFitSplineGuide();
-    virtual bool IsEditorOnly() const override { return true; }
-    UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category="Fit")
+    virtual bool IsEditorOnly() const override
+    {
+        return true;
+    }
+    UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Fit")
     TObjectPtr<USplineComponent> Spline;
 };

@@ -1,4 +1,6 @@
 #include "InteriorFitTraceBatch.h"
+
+#include "InteriorFitEditorWorld.h"
 #include "GameFramework/Actor.h"
 #include "HAL/PlatformTime.h"
 
@@ -7,18 +9,43 @@ namespace
     // Game-thread only. Recheck periodically in case this editor world resumes actor ticks.
     TWeakObjectPtr<UWorld> RecentlyTimeOnlyWorld;
     double RecheckActorTicksAt = 0;
+    // Python's ray_queries.BATCH_SIZE must stay within this submission limit.
+    constexpr int32 MaxRaysPerBatch = 128;
+    constexpr double SecondsPerMillisecond = 0.001;
+    // Wait for async delivery, or recheck a world recently seen skipping actor ticks.
+    constexpr double AsyncDeliveryTimeoutSeconds = 1.0;
+    constexpr double ActorTickRecheckSeconds = 0.35;
+    // Wall-time slice for a fallback pump. One trace can overrun the deadline.
+    constexpr double FallbackSliceSeconds = 0.0015;
+
     constexpr double MaximumImmediateSeconds = 0.00075;
+} // namespace
+
+UInteriorFitTraceBatch*
+UInteriorFitTraceBatch::SubmitRequest(AActor* Seed, const FInteriorFitTraceRequest& Request)
+{
+    return Submit(Seed, Request.Starts, Request.Ends, Request.Ignored, Request.ImmediateBudgetMs);
 }
 
 UInteriorFitTraceBatch* UInteriorFitTraceBatch::Submit(AActor* Seed, const TArray<FVector>& Starts,
-    const TArray<FVector>& Ends, const TArray<AActor*>& Ignored, float ImmediateBudgetMs)
+                                                       const TArray<FVector>& Ends,
+                                                       const TArray<AActor*>& Ignored,
+                                                       float ImmediateBudgetMs)
 {
-    UWorld* World = IsValid(Seed) ? Seed->GetWorld() : nullptr;
-    if (!IsInGameThread() || !World || World->WorldType != EWorldType::Editor ||
-        Starts.Num() != Ends.Num() || Starts.IsEmpty() || Starts.Num() > 128)
+    if (!IsInGameThread())
+    {
         return nullptr;
+    }
+    UWorld* World = IsValid(Seed) ? Seed->GetWorld() : nullptr;
+    const bool bValidRayCount = !Starts.IsEmpty() && Starts.Num() <= MaxRaysPerBatch;
+    if (!InteriorFitEditorWorld::IsEditorWorld(World) || !bValidRayCount ||
+        Starts.Num() != Ends.Num())
+    {
+        return nullptr;
+    }
 
-    auto* Batch = NewObject<UInteriorFitTraceBatch>();
+    // The caller retains the batch while weak-bound delegates are registered.
+    UInteriorFitTraceBatch* Batch = NewObject<UInteriorFitTraceBatch>(GetTransientPackage());
     Batch->Hits.SetNum(Starts.Num());
     Batch->Pending = Starts.Num();
     Batch->TargetWorld = World;
@@ -33,12 +60,20 @@ UInteriorFitTraceBatch* UInteriorFitTraceBatch::Submit(AActor* Seed, const TArra
         // Opt-in only: the original four-argument call retains deferred dispatch.
         // Python shares its remaining callback budget, not a fresh budget per wave.
         Batch->bFrameSliced = true;
-        Batch->TraceSlice(World, Now + FMath::Min(ImmediateBudgetMs * 0.001, MaximumImmediateSeconds));
+        Batch->TraceSlice(World, Now + FMath::Min(ImmediateBudgetMs * SecondsPerMillisecond,
+                                                  MaximumImmediateSeconds));
     }
-    if (!Batch->Pending) return Batch;
+    if (!Batch->Pending)
+    {
+        return Batch;
+    }
     if (!Batch->bFrameSliced)
-        Batch->PreTickHandle = FWorldDelegates::OnWorldPreActorTick.AddUObject(Batch, &UInteriorFitTraceBatch::PreActorTick);
-    Batch->PumpHandle = FTSTicker::GetCoreTicker().AddTicker(FTickerDelegate::CreateUObject(Batch, &UInteriorFitTraceBatch::Pump));
+    {
+        Batch->PreTickHandle = FWorldDelegates::OnWorldPreActorTick.AddUObject(
+            Batch, &UInteriorFitTraceBatch::PreActorTick);
+    }
+    Batch->PumpHandle = FTSTicker::GetCoreTicker().AddTicker(
+        FTickerDelegate::CreateUObject(Batch, &UInteriorFitTraceBatch::Pump));
     return Batch;
 }
 
@@ -55,14 +90,23 @@ void UInteriorFitTraceBatch::Cancel()
 
 void UInteriorFitTraceBatch::PreActorTick(UWorld* World, ELevelTick, float)
 {
-    if (World != TargetWorld.Get() || bSubmitted || bFrameSliced || bCancelled) return;
-    if (RecentlyTimeOnlyWorld.Get() == World) RecentlyTimeOnlyWorld.Reset();
+    if (World != TargetWorld.Get() || bSubmitted || bFrameSliced || bCancelled)
+    {
+        return;
+    }
+    if (RecentlyTimeOnlyWorld.Get() == World)
+    {
+        RecentlyTimeOnlyWorld.Reset();
+    }
     bSubmitted = true;
-    Deadline = FPlatformTime::Seconds() + 1.0;
+    Deadline = FPlatformTime::Seconds() + AsyncDeliveryTimeoutSeconds;
     FTraceDelegate Delegate = FTraceDelegate::CreateUObject(this, &UInteriorFitTraceBatch::OnTrace);
     for (int32 Index = 0; Index < RayStarts.Num(); ++Index)
-        World->AsyncLineTraceByChannel(EAsyncTraceType::Single, RayStarts[Index], RayEnds[Index],
-            ECC_Pawn, Query, FCollisionResponseParams::DefaultResponseParam, &Delegate, Index);
+    {
+        World->AsyncLineTraceByChannel(
+            EAsyncTraceType::Single, RayStarts[Index], RayEnds[Index], ECC_Pawn, Query,
+            FCollisionResponseParams::DefaultResponseParam, &Delegate, Index);
+    }
 }
 
 bool UInteriorFitTraceBatch::Pump(float)
@@ -81,16 +125,22 @@ bool UInteriorFitTraceBatch::Pump(float)
     const bool bKnownTimeOnly = RecentlyTimeOnlyWorld.Get() == World && Now < RecheckActorTicksAt;
     if (!bFrameSliced && !bSubmitted && !bKnownTimeOnly)
     {
-        if (GFrameCounter <= QueuedFrame + 1) return true;
+        if (GFrameCounter <= QueuedFrame + 1)
+        {
+            return true;
+        }
         RecentlyTimeOnlyWorld = World;
-        RecheckActorTicksAt = Now + 0.35;
+        RecheckActorTicksAt = Now + ActorTickRecheckSeconds;
     }
-    if (bSubmitted && Now < Deadline) return true;
+    if (bSubmitted && Now < Deadline)
+    {
+        return true;
+    }
 
     // Non-realtime editor worlds skip the actor ticks that deliver async trace results.
     // Replay the same rays with a small wall-time budget rather than ticking physics manually.
     bFrameSliced = true;
-    TraceSlice(World, FPlatformTime::Seconds() + 0.0015);
+    TraceSlice(World, FPlatformTime::Seconds() + FallbackSliceSeconds);
     return true;
 }
 
@@ -101,15 +151,20 @@ void UInteriorFitTraceBatch::TraceSlice(UWorld* World, double EndTime)
         FHitResult Hit;
         World->LineTraceSingleByChannel(Hit, RayStarts[NextRay], RayEnds[NextRay], ECC_Pawn, Query);
         Hits[NextRay++] = Hit;
-    }
-    while (NextRay < Hits.Num() && FPlatformTime::Seconds() < EndTime);
+    } while (NextRay < Hits.Num() && FPlatformTime::Seconds() < EndTime);
     Pending = Hits.Num() - NextRay;
 }
 
 void UInteriorFitTraceBatch::OnTrace(const FTraceHandle&, FTraceDatum& Datum)
 {
-    if (bFrameSliced || bCancelled) return;
-    if (!Datum.OutHits.IsEmpty()) Hits[Datum.UserData] = Datum.OutHits[0];
+    if (bFrameSliced || bCancelled)
+    {
+        return;
+    }
+    if (!Datum.OutHits.IsEmpty())
+    {
+        Hits[Datum.UserData] = Datum.OutHits[0];
+    }
     --Pending;
 }
 

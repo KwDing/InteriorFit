@@ -11,14 +11,15 @@ UCLASS(NotBlueprintable)
 class INTERIORFITEDITOR_API AInteriorFitSurfacePreview : public AActor
 {
     GENERATED_BODY()
-public:
+  public:
     AInteriorFitSurfacePreview();
     bool InitializePreview(const FString& JSON);
     virtual void PostLoad() override;
 
-    UPROPERTY(BlueprintReadOnly, Category="Audio Preview")
+    UPROPERTY(BlueprintReadOnly, Category = "Audio Preview")
     FString PreviewJSON;
-private:
+
+  private:
     UPROPERTY()
     TObjectPtr<ULineBatchComponent> Lines;
 };

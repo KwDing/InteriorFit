@@ -6,6 +6,10 @@
 
 [安装插件](#install) · [快速开始](#quick-start) · [与 Wwise 原生拟合对比](#comparison) · [已知限制](#limitations)
 
+开发规范：[插件架构](Docs/Standards/unreal-plugin-architecture.md) · [UE C++](Docs/Standards/unreal-cpp.md) · [Python](Docs/Standards/python.md) · [共用命名](Docs/Standards/naming-and-abbreviations.md)
+
+**v0.5.0** 重组了 Room 和 Portal 的 Python 模块。使用内部 Python 导入路径的工具脚本需要迁移到新版路径。升级时请关闭 Unreal Editor，完整替换旧的 `InteriorFit` 插件目录，再重新编译或安装对应的 Win64 构建。
+
 ### 主要能力
 
 - **Room 制作：** 从编辑器视口位置开始，生成 Preview ，并在人工检查后生成声学房间；支持凹形、曲面近似、部分高度变化空间。针对射线穿过门窗开口、命中外部对墙的情况，会 **结合地板、顶面与边界连续性判断室内范围**。

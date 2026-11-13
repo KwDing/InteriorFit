@@ -1,4 +1,4 @@
-# Only plugin distribution files belong at the repository root.
+# Keep plugin distribution files.
 /*
 !/.gitignore
 !/README.md
@@ -34,3 +34,13 @@ Docs/
 .env.*
 *.pem
 *.key
+
+# Keep README as the only documentation in the repository.
+*.md
+*.rst
+*.adoc
+*.txt
+*.pdf
+*.doc
+*.docx
+!/README.md
